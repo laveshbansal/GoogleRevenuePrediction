@@ -60,6 +60,8 @@ excluded_features =['socialEngagementType','totals.visits','totals.newVisits','d
             'trafficSource.adwordsClickInfo.page','trafficSource.adwordsClickInfo.slot']
 
 A=train_df.drop(excluded_features,axis=1)
+
+#32 columns
 print(A.shape)
 
 import matplotlib.pyplot as plt
@@ -161,7 +163,29 @@ X=B.drop(['shops or not','date','vis_date','totals.transactionRevenue'],axis=1)
 y=B['shops or not']
 # y=train_df['shops or not']
 
+#28 columns
+print(X.shape)
+
+# feature selection
+from sklearn.ensemble import ExtraTreesClassifier
+# here criterion='entropy'  for the information gain, 'gini' for the Gini impurity
+model = ExtraTreesClassifier(criterion='entropy')
+model.fit(X,y)
+
+imp_df = pd.DataFrame()
+imp_df['feature'] = X.columns
+imp_df['importance'] = model.feature_importances_
+print(imp_df.sort_values('importance', ascending=False))
+imp_df = imp_df[imp_df['importance'].astype('float') < 0.0005]
+dropFeatures = imp_df['feature'].values
+print(dropFeatures)
+X=X.drop(dropFeatures,axis=1)
+
+#25 columns
+print(X.shape)
+
 # print(X)
+
 X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.20, random_state=101)
 
 from sklearn.preprocessing import StandardScaler
@@ -170,16 +194,42 @@ scaler.fit(X_train)
 X_train = scaler.transform(X_train)
 X_test = scaler.transform(X_test)
 
-
+# logistic regression classifier
 logmodel = LogisticRegression()
 logmodel.fit(X_train,y_train)
 
 predictions = logmodel.predict(X_test)
 print(classification_report(y_test, predictions))
 
-
+# knn classifier
 from sklearn.neighbors import KNeighborsClassifier
 knn = KNeighborsClassifier(n_neighbors=5)
 knn.fit(X_train,y_train)
 pred = knn.predict(X_test)
 print(classification_report(y_test,pred))
+
+# knn regression
+y1 = A["totals.transactionRevenue"].fillna(0)
+knn_reg_preds = np.zeros(A.shape[0])
+
+
+from sklearn.model_selection import KFold, GroupKFold
+folds = GroupKFold(n_splits=5)
+for fold_, (trn_, val_) in enumerate(folds.split(X, y1, groups=X['fullVisitorId'])):
+    trn_x, trn_y = X.iloc[trn_], y1.iloc[trn_]
+    val_x, val_y = X.iloc[val_], y1.iloc[val_]
+
+from sklearn.neighbors import KNeighborsRegressor
+knn_reg = KNeighborsRegressor(n_neighbors=5)
+knn_reg.fit(trn_x,trn_y)
+knn_reg_preds[val_] = knn_reg.predict(val_x)
+
+
+from scipy import stats
+print(stats.describe(y1))
+print(stats.describe(knn_reg_preds))
+
+
+from sklearn.metrics import mean_squared_error
+mse=mean_squared_error(np.log1p(y1), np.log1p(knn_reg_preds)) ** .5
+print(mse)
